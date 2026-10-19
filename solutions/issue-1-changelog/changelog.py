@@ -37,7 +37,7 @@ def commits_since_tag(cwd: Path, tag: str | None) -> list[tuple[str, str]]:
     # A tag name can also resolve to a pseudoref or a fully qualified branch.
     # Keep the release boundary in the tag namespace and separate path arguments.
     revision = f"refs/tags/{tag}..HEAD" if tag else "HEAD"
-    raw = git("log", "--no-show-signature", "--format=%H%x00%s%x00", revision, "--", cwd=cwd)
+    raw = git("log", "--no-show-signature", "--encoding=UTF-8", "--format=%H%x00%s%x00", revision, "--", cwd=cwd)
     parts = raw.split("\0")
     commits = []
     for index in range(0, len(parts) - 1, 2):

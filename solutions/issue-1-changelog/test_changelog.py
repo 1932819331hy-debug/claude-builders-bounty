@@ -55,6 +55,14 @@ class ChangelogTests(unittest.TestCase):
         self.assertIn("- newest fix", output)
         self.assertNotIn("new widget", output)
 
+    def test_unicode_is_preserved_with_non_utf8_git_log_output_encoding(self):
+        self.git("tag", "v1.0")
+        self.commit_file("feature.txt", "feature\n", "feat: add café support")
+        self.git("config", "i18n.logOutputEncoding", "ISO-8859-1")
+        output = generate(self.repo)
+        self.assertIn("### Added\n\n- add café support", output)
+        self.assertNotIn("\ufffd", output)
+
     def test_classifier_defaults_untyped_and_categorizes_aliases(self):
         self.assertEqual(classify("just a message"), ("Changed", "just a message"))
         self.assertEqual(classify("bug: crash"), ("Fixed", "crash"))
