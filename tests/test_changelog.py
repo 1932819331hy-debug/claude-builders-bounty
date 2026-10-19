@@ -77,6 +77,23 @@ class ChangelogTests(unittest.TestCase):
         self.assertIn("## Changed\n- No changes.", result.stdout)
         self.assertIn("## Removed", result.stdout)
 
+    def test_invalid_repository_fails_without_replacing_existing_changelog(self):
+        with tempfile.TemporaryDirectory(prefix="changelog-invalid-") as directory:
+            repo = Path(directory)
+            output = repo / "CHANGELOG.md"
+            original = "# Handwritten releases\n\nKeep previous release notes.\n"
+            output.write_text(original, encoding="utf-8")
+
+            result = subprocess.run(
+                ["python3", str(SCRIPT), "--repo", str(repo)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertEqual(output.read_text(encoding="utf-8"), original)
+
     def test_commit_subject_is_data_not_a_shell_command(self):
         marker = self.repo / "PWNED"
         self.commit("feat: $(touch PWNED); `touch PWNED`", "safe.txt")

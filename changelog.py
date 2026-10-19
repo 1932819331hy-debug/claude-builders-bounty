@@ -27,6 +27,9 @@ def run_git(repo, *args, allow_failure=False):
 
 
 def commit_subjects(repo):
+    # Validate the repository separately: an unborn repository legitimately has
+    # no HEAD, while a non-repository must fail before any output is written.
+    run_git(repo, "rev-parse", "--git-dir")
     if run_git(repo, "rev-parse", "--verify", "HEAD", allow_failure=True).returncode:
         return []
     tag = run_git(repo, "describe", "--tags", "--abbrev=0", allow_failure=True)
