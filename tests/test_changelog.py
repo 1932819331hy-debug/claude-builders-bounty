@@ -77,6 +77,21 @@ class ChangelogTests(unittest.TestCase):
         self.assertIn("## Changed\n- No changes.", result.stdout)
         self.assertIn("## Removed", result.stdout)
 
+    def test_bash_entrypoint_forwards_repository_and_stdout_arguments(self):
+        self.commit("feat: forwarded feature", "feature.txt")
+
+        result = subprocess.run(
+            ["bash", str(ROOT / "changelog.sh"), "--repo", str(self.repo), "--stdout"],
+            cwd=self.repo.parent,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("## Added\n- forwarded feature", result.stdout)
+        self.assertFalse((self.repo / "CHANGELOG.md").exists())
+
     def test_invalid_repository_fails_without_replacing_existing_changelog(self):
         with tempfile.TemporaryDirectory(prefix="changelog-invalid-") as directory:
             repo = Path(directory)
