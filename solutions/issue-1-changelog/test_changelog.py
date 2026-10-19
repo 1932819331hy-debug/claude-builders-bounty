@@ -60,6 +60,31 @@ class ChangelogTests(unittest.TestCase):
         self.assertEqual(classify("bug: crash"), ("Fixed", "crash"))
         self.assertEqual(classify("deprecate: old api"), ("Removed", "old api"))
 
+    def test_tag_boundary_does_not_resolve_as_a_pseudoref(self):
+        self.git("tag", "ORIG_HEAD")
+        self.commit_file("feature.txt", "new\n", "feat: unreleased feature")
+        # ORIG_HEAD can also be set by Git operations such as merge and reset.
+        self.git("update-ref", "ORIG_HEAD", "HEAD")
+        self.assertEqual(last_reachable_tag(self.repo), "ORIG_HEAD")
+        output = generate(self.repo)
+        self.assertIn("- unreleased feature", output)
+        self.assertNotIn("seed repository", output)
+
+    def test_tag_boundary_does_not_resolve_as_a_branch(self):
+        self.git("tag", "refs/heads/release")
+        self.commit_file("feature.txt", "new\n", "feat: unreleased feature")
+        self.git("branch", "release")
+        self.assertEqual(last_reachable_tag(self.repo), "refs/heads/release")
+        output = generate(self.repo)
+        self.assertIn("- unreleased feature", output)
+        self.assertNotIn("seed repository", output)
+
+    def test_no_tag_history_is_not_ambiguous_with_a_head_named_file(self):
+        self.commit_file("HEAD", "ordinary project file\n", "feat: support HEAD filename")
+        output = generate(self.repo)
+        self.assertIn("- support HEAD filename", output)
+        self.assertIn("- seed repository", output)
+
     def test_markdown_and_html_in_subjects_are_rendered_as_text(self):
         self.commit_file("malicious.txt", "text\n", 'feat: <img src="https://example.invalid/x"> [link](javascript:alert(1))')
         output = generate(self.repo)
