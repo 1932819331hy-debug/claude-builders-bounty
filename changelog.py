@@ -70,6 +70,7 @@ def main():
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=Path("CHANGELOG.md"))
     parser.add_argument("--stdout", action="store_true")
+    parser.add_argument("--force", action="store_true", help="replace an existing output file")
     args = parser.parse_args()
 
     try:
@@ -80,7 +81,18 @@ def main():
         print(content, end="")
     else:
         output = args.output if args.output.is_absolute() else args.repo / args.output
-        output.write_text(content, encoding="utf-8")
+        try:
+            if args.force:
+                output.write_text(content, encoding="utf-8")
+            else:
+                # Exclusive creation prevents inadvertent loss of published
+                # release notes, including a concurrent file creation.
+                with output.open("x", encoding="utf-8") as changelog:
+                    changelog.write(content)
+        except FileExistsError:
+            parser.error(f"{output} already exists; use --stdout to preview or --force to replace it")
+        except OSError as exc:
+            parser.error(f"could not write {output}: {exc}")
         print(f"Wrote {output}")
     return 0
 
