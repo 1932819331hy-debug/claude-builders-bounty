@@ -40,6 +40,26 @@ class ChangelogSafetyTests(unittest.TestCase):
         self.assertEqual(categorize("feat(ui)!: change layout"), ("Added", "**BREAKING:** change layout"))
         self.assertEqual(categorize("feat: add filter"), ("Added", "add filter"))
 
+    def test_untrusted_commit_subject_is_not_rendered_as_html_or_active_markdown_link(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subject = "feat: <img src=x onerror=alert(1)> [click](javascript:alert(2))"
+            subprocess.run(
+                ["git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                 "commit", "--allow-empty", "-m", subject],
+                check=True, capture_output=True, text=True,
+            )
+            run = subprocess.run(
+                ["python3", str(SCRIPT), "--repo", str(root), "--stdout"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertIn("&lt;img", run.stdout)
+            self.assertIn(r"\[click\]", run.stdout)
+            self.assertNotIn("<img", run.stdout)
+            self.assertNotIn("[click](javascript:", run.stdout)
+
     def test_new_changelog_is_created_without_force(self):
         with tempfile.TemporaryDirectory() as temp:
             repo = Path(temp)
