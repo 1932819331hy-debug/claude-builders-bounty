@@ -40,8 +40,11 @@ def commit_subjects(repo):
 
 def categorize(subject):
     prefix, separator, remainder = subject.partition(":")
-    normalized = prefix.lower().split("(", 1)[0].strip()
+    breaking = bool(separator and prefix.strip().endswith("!"))
+    normalized = prefix.lower().rstrip("!").split("(", 1)[0].strip()
     text = remainder.strip() if separator and remainder.strip() else subject.strip()
+    if breaking:
+        text = f"**BREAKING:** {text}"
     for category, prefixes in PREFIXES.items():
         if normalized in prefixes:
             return category, text
