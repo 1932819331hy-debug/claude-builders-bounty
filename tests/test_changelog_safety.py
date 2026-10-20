@@ -30,6 +30,16 @@ class ChangelogSafetyTests(unittest.TestCase):
             self.assertNotEqual(output.read_text(encoding="utf-8"), original)
             self.assertTrue(output.read_text(encoding="utf-8").startswith("# Changelog"))
 
+    def test_breaking_conventional_prefix_is_classified_and_marked(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        from changelog import categorize
+
+        self.assertEqual(categorize("feat!: replace old API"), ("Added", "**BREAKING:** replace old API"))
+        self.assertEqual(categorize("fix!: require a fresh token"), ("Fixed", "**BREAKING:** require a fresh token"))
+        self.assertEqual(categorize("feat(ui)!: change layout"), ("Added", "**BREAKING:** change layout"))
+        self.assertEqual(categorize("feat: add filter"), ("Added", "add filter"))
+
     def test_new_changelog_is_created_without_force(self):
         with tempfile.TemporaryDirectory() as temp:
             repo = Path(temp)
