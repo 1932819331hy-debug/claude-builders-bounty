@@ -56,7 +56,8 @@ requirements.
 2. Run `bash changelog.sh --repo /path/to/your/repository`.
 3. Open `/path/to/your/repository/CHANGELOG.md`.
 
-Use `--stdout` to preview without writing a file. See
+Use `--stdout` to preview without writing a file.
+Existing `CHANGELOG.md` files are preserved by default; use `--force` only to replace them intentionally. See
 [`examples/CHANGELOG.sample.md`](examples/CHANGELOG.sample.md) for output
 generated from this GitHub repository. Run the regression suite with
 `python3 -m unittest discover -s tests -v`.
