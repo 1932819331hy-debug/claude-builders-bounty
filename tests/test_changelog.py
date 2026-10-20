@@ -129,7 +129,7 @@ class ChangelogTests(unittest.TestCase):
 
         result = self.generate()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("## Added\\n- should be in changelog", result.stdout)
+        self.assertIn("## Added\n- should be in changelog", result.stdout)
         self.assertNotIn("tagged baseline", result.stdout)
 
 if __name__ == "__main__":
