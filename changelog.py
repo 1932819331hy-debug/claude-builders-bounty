@@ -33,7 +33,7 @@ def commit_subjects(repo):
     if run_git(repo, "rev-parse", "--verify", "HEAD", allow_failure=True).returncode:
         return []
     tag = run_git(repo, "describe", "--tags", "--abbrev=0", allow_failure=True)
-    revision = f"{tag.stdout.strip()}..HEAD" if tag.returncode == 0 else "HEAD"
+    revision = f"refs/tags/{tag.stdout.strip()}..HEAD" if tag.returncode == 0 else "HEAD"
     output = run_git(repo, "log", revision, "--format=%s%x00").stdout
     return [subject.strip() for subject in output.split("\0") if subject.strip()]
 
