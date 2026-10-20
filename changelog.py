@@ -2,6 +2,7 @@
 """Generate a categorized Markdown changelog from Git commit subjects."""
 
 import argparse
+import html
 import subprocess
 from pathlib import Path
 
@@ -38,11 +39,21 @@ def commit_subjects(repo):
     return [subject.strip() for subject in output.split("\0") if subject.strip()]
 
 
+def markdown_safe_subject(subject):
+    """Keep commit-authored HTML and Markdown links inert in generated notes."""
+    return (
+        html.escape(subject, quote=False)
+        .replace("\\", "\\\\")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
+
+
 def categorize(subject):
     prefix, separator, remainder = subject.partition(":")
     breaking = bool(separator and prefix.strip().endswith("!"))
     normalized = prefix.lower().rstrip("!").split("(", 1)[0].strip()
-    text = remainder.strip() if separator and remainder.strip() else subject.strip()
+    text = markdown_safe_subject(remainder.strip() if separator and remainder.strip() else subject.strip())
     if breaking:
         text = f"**BREAKING:** {text}"
     for category, prefixes in PREFIXES.items():
