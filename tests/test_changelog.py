@@ -120,5 +120,17 @@ class ChangelogTests(unittest.TestCase):
         self.assertFalse(marker.exists())
 
 
+
+    def test_tag_name_does_not_collide_with_orig_head_pseudoref(self):
+        self.commit("chore: tagged baseline", "old.txt")
+        git(self.repo, "tag", "ORIG_HEAD")
+        self.commit("feat: should be in changelog", "new.txt")
+        git(self.repo, "update-ref", "ORIG_HEAD", "HEAD")
+
+        result = self.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("## Added\\n- should be in changelog", result.stdout)
+        self.assertNotIn("tagged baseline", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()
