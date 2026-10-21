@@ -32,6 +32,8 @@ Blocked attempts are written as JSON Lines to `~/.claude/hooks/blocked.log`, wit
 
 This is defense in depth, not a sandbox or a guarantee that dangerous operations cannot happen. It only examines Claude Code `Bash` tool input. It does not provide a complete shell interpreter, and obfuscated or dynamically generated commands, shell functions and aliases, unrecognized wrappers, other shells/tools, direct file/database APIs, SQL loaded through client-specific file flags, interactive database sessions, and unsupported SQL clients may bypass these checks. Complex quoting or shell syntax can also lead to conservative blocks or missed cases. Keep Claude Code permissions and operating-system safeguards enabled, and review commands that affect important data.
 
+Bash dollar quoting (`$'...'` and `$"..."`) is conservatively blocked because Python `shlex` cannot model it. Here-strings, opaque input redirections, and unknown pipelines feeding shell scripts over stdin are also blocked; simple literal `echo`/`printf` producers are inspected. These checks do not make the hook a complete shell parser.
+
 ## Tests
 
 Tests use command strings and JSON fixtures; they never run the fixture commands or install into the real `~/.claude` directory.

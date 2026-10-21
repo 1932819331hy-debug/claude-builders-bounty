@@ -156,6 +156,71 @@ class HookProcessTests(unittest.TestCase):
             self.assertIn(b"could not be written", result.stderr)
             self.assertEqual(outside.read_text(encoding="utf-8"), "keep\n")
 
+    def test_bash_dollar_quote_and_opaque_stdin_fail_closed(self) -> None:
+        # Each example is hook input text only; fixture commands are never executed.
+        blocked_inputs = (
+            "bash -c $'rm -rf /tmp/fixture'",
+            "$'rm' -rf /tmp/fixture",
+            "bash -c $'git push --force origin main'",
+            "psql -c $'DROP TABLE users'",
+            "bash <<< 'rm -rf /tmp/fixture'",
+            'cat /fake/script.sh | bash',
+            "echo 'git push --force origin main' | bash",
+            "printf '%s' 'rm -rf /tmp/fixture' | bash",
+            'bash < /fake/script.sh',
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            for command in blocked_inputs:
+                with self.subTest(command=command):
+                    result = self.run_hook(command, temp)
+                    self.assertEqual(result.returncode, 2, result.stderr.decode())
+                    self.assertEqual(result.stdout, b"")
+            for command in (
+                'echo "literal $\'text\'"',
+                "bash -c 'printf safe'",
+                "echo 'printf safe' | bash",
+                "cat <<'EOF'\nrm -rf x\nEOF",
+            ):
+                with self.subTest(normal_command=command):
+                    result = self.run_hook(command, temp)
+                    self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b"", b""))
+
+    def test_safe_shell_heredoc_and_stdin_controls(self) -> None:
+        # Data sent to the hook only, never executed as shell commands.
+        allowed = (
+            "bash <<'EOF'\nprintf safe\nEOF",
+            "cat <<'EOF' | bash\nprintf safe\nEOF",
+            "bash -s <<'EOF'\nprintf safe\nEOF",
+            "echo 'printf safe' | bash",
+            "printf '%s' 'printf safe' | sh",
+            "bash -c 'printf safe' < /fake/input",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            for command in allowed:
+                with self.subTest(command=command):
+                    result = self.run_hook(command, temp)
+                    self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b"", b""))
+
+    def test_stdin_option_boundaries_and_overrides_fail_closed(self) -> None:
+        blocked = (
+            "echo 'rm -rf /tmp/fixture' | bash -s -- -c",
+            "bash -s -- -c <<< 'rm -rf /tmp/fixture'",
+            "bash <<'EOF' <<< 'rm -rf /tmp/fixture'\nprintf safe\nEOF",
+            "echo -ne '\\x72m -rf /tmp/fixture' | bash",
+            "echo -ne 'rm -rf /tmp/fixture' | bash",
+            "echo -nE 'git push --force origin main' | bash",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            for command in blocked:
+                with self.subTest(command=command):
+                    result = self.run_hook(command, temp)
+                    self.assertEqual(result.returncode, 2, result.stderr.decode())
+                    self.assertEqual(result.stdout, b"")
+            for command in ("echo 'printf safe' | bash -s -- -c", "echo -n 'printf safe' | bash", "echo -ne 'printf safe' | bash"):
+                with self.subTest(normal_command=command):
+                    result = self.run_hook(command, temp)
+                    self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b"", b""))
+
     def test_non_bash_tool_is_ignored(self) -> None:
         payload = json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/tmp/x"}}).encode()
         with tempfile.TemporaryDirectory() as temp:

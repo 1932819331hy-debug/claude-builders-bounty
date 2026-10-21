@@ -313,7 +313,7 @@ def has_shell_expansion(text: str) -> bool:
     return False
 
 
-def has_stdin_redirection(text: str) -> bool:
+def has_stdin_redirection(text: str, allow_heredoc: bool = False) -> bool:
     quote: str | None = None
     escaped = False
     i = 0
@@ -337,6 +337,9 @@ def has_stdin_redirection(text: str) -> bool:
             i += 1
             continue
         if ch == "<":
+            if allow_heredoc and text[i:i + 2] == "<<" and text[i:i + 3] != "<<<":
+                i += 2
+                continue
             return True
         i += 1
     return False
@@ -487,9 +490,34 @@ def extract_substitutions(script: str) -> list[str]:
     return found
 
 
+def has_active_dollar_quote(segment: str) -> bool:
+    """Detect Bash-only dollar quotes unsupported by Python shlex."""
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(segment):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = None
+            continue
+        if char == "$" and index + 1 < len(segment) and segment[index + 1] in ("'", '"'):
+            return True
+        if char in ("'", '"'):
+            quote = char
+    return False
+
+
 def shell_words(segment: str) -> list[str]:
     # Remove leading grouping punctuation so `(rm -rf x)` is checked like rm.
     segment = segment.strip()
+    if has_active_dollar_quote(segment):
+        # shlex drops the quote but keeps '$', potentially concealing rm/git/SQL.
+        raise ValueError("unsupported Bash dollar quoting")
     while segment.startswith(("(", "{", "!")):
         segment = segment[1:].lstrip()
     try:
@@ -827,6 +855,57 @@ def inspect_shell_heredocs(script: str, depth: int) -> str | None:
     return None
 
 
+def inspect_shell_stdin(script: str, entries: list[dict[str, object]], depth: int) -> str | None:
+    """Reject opaque shell scripts delivered over stdin; inspect simple literal producers."""
+    known_headers = [group for entry in entries for group in split_shell_groups(str(entry["header"]))]
+    for group in split_shell_groups(script):
+        known_heredoc = any(group == header for header in known_headers)
+        for index, segment in enumerate(group):
+            words = unwrap_command(shell_words(segment))
+            if not words or os.path.basename(words[0]).lower() not in SHELLS:
+                continue
+            # A -c script is already inspected by classify_segment, not read from stdin.
+            command_option = False
+            for word in words[1:]:
+                # After --, values such as -c are positional arguments, not options.
+                if word == "--" or not word.startswith("-"):
+                    break
+                if word == "-c" or (not word.startswith("--") and "c" in word[1:]):
+                    command_option = True
+                    break
+            if command_option:
+                continue
+            if has_stdin_redirection(segment, allow_heredoc=known_heredoc):
+                return "analysis"
+            if index == 0 or known_heredoc or not shell_reads_stdin_as_script(words):
+                continue
+            producer_segment = group[index - 1]
+            producer = unwrap_command(shell_words(producer_segment))
+            if not producer or has_shell_expansion(producer_segment):
+                return "analysis"
+            name = os.path.basename(producer[0]).lower()
+            if name == "echo":
+                echo_options = []
+                for word in producer[1:]:
+                    if len(word) > 1 and word.startswith("-") and set(word[1:]) <= set("neE"):
+                        echo_options.append(word)
+                    else:
+                        break
+                if any("e" in word for word in echo_options) and "\\" in producer_segment:
+                    return "analysis"
+                body = " ".join(producer[1 + len(echo_options):])
+            elif name == "printf":
+                body = printf_sql_text(producer)
+            else:
+                return "analysis"
+            if body is None or has_shell_expansion(body):
+                return "analysis"
+            reason = inspect_command(body, depth + 1)
+            if reason:
+                return reason
+    return None
+
+
 def classify_segment(segment: str, depth: int = 0) -> str | None:
     words = shell_words(segment)
     words = unwrap_command(words)
@@ -867,6 +946,9 @@ def inspect_command(script: str, depth: int = 0) -> str | None:
     if reason:
         return reason
     reason = inspect_sql_pipelines(script)
+    if reason:
+        return reason
+    reason = inspect_shell_stdin(shell_script, entries, depth)
     if reason:
         return reason
     for segment in split_shell_commands(shell_script):
