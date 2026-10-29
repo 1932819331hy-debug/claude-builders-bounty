@@ -98,22 +98,27 @@ def install(home: Path | None = None) -> Path:
             raise RuntimeError("settings.json has an invalid PreToolUse hook group; no changes made")
 
     command = shlex.quote(str(target))
-    exists = any(
-        isinstance(group, dict)
-        and group.get("matcher") == "Bash"
-        and any(
-            isinstance(handler, dict)
-            and handler.get("type") == "command"
-            and handler.get("command") == command
-            for handler in group.get("hooks", [])
-        )
+    existing_handlers = [
+        handler
         for group in pre_tool
-    )
+        if group.get("matcher") == "Bash"
+        for handler in group.get("hooks", [])
+        if isinstance(handler, dict)
+        and handler.get("type") == "command"
+        and handler.get("command") == command
+    ]
+    settings_changed = not existing_handlers
+    for handler in existing_handlers:
+        if handler.get("onFailure") != "block":
+            handler["onFailure"] = "block"
+            settings_changed = True
 
     # Validate settings before writing the hook, so malformed user settings
     # never leave a partial installation behind.
     try:
-        existing_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        existing_fd = os.open(
+            target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | os.O_NONBLOCK
+        )
     except FileNotFoundError:
         existing_fd = None
     except OSError as exc:
@@ -150,7 +155,7 @@ def install(home: Path | None = None) -> Path:
                 pass
             raise
 
-    if not exists:
+    if not existing_handlers:
         pre_tool.append(
             {
                 "matcher": "Bash",
@@ -163,6 +168,7 @@ def install(home: Path | None = None) -> Path:
                 ],
             }
         )
+    if settings_changed:
         try:
             atomic_write(settings_path, json.dumps(settings, indent=2, ensure_ascii=False) + "\n", old_mode)
         except Exception:

@@ -10,7 +10,7 @@ From this directory, run one command:
 python3 install.py
 ```
 
-The installer copies `command_guard.py` to `~/.claude/hooks/command_guard.py` and merges a `PreToolUse` / `Bash` entry into `~/.claude/settings.json`. Existing settings and hook groups are preserved, and the installer refuses unsafe symlink or conflicting hook paths. It does not configure project-level settings. Review the installer and resulting settings before using it. Restart Claude Code after installation. The configuration sets `onFailure: "block"` so a missing, failed, or timed-out command hook fails closed; current Claude Code documentation says this field requires Claude Code v2.1.295 or later.
+The installer copies `command_guard.py` to `~/.claude/hooks/command_guard.py` and merges a `PreToolUse` / `Bash` entry into `~/.claude/settings.json`. Unrelated settings and hook groups are preserved, and the installer refuses unsafe symlink, FIFO, or conflicting hook paths. Reinstalling restores `onFailure: "block"` on matching entries without adding another hook. It does not configure project-level settings. Review the installer and resulting settings before using it. Restart Claude Code after installation. The configuration sets `onFailure: "block"` so a missing, failed, or timed-out command hook fails closed; current Claude Code documentation says this field requires Claude Code v2.1.295 or later.
 
 ## What it checks
 
@@ -36,11 +36,21 @@ Bash dollar quoting (`$'...'` and `$"..."`) is conservatively blocked because Py
 
 ## Tests
 
-Tests use command strings and JSON fixtures; they never run the fixture commands or install into the real `~/.claude` directory.
+The unit tests use command strings and JSON fixtures; they never run destructive commands or install into the real `~/.claude` directory.
 
 ```sh
 python3 -m unittest -v
 ```
+
+The optional runtime test starts the official Claude Code CLI against a local, synthetic model-response server. It verifies that the installed hook blocks the five required patterns, returns reasons, writes log records, and allows ordinary commands. Inert executables stand in for destructive programs; a separate run without the hook proves those same tool calls would execute. Both runs use temporary home and project directories. This verifies the CLI/hook integration, not a live model or authenticated account.
+
+To include it, set `CLAUDE_BINARY` to the absolute path of an installed Claude Code executable:
+
+```sh
+CLAUDE_BINARY=/absolute/path/to/claude python3 -m unittest -v
+```
+
+With `CLAUDE_BINARY` unset, only the runtime test is skipped. An invalid explicit path or a failed runtime assertion fails the test. The GitHub Actions workflow runs the unit tests and this integration check on Linux and macOS using Claude Code `2.1.312`, without model credentials.
 
 ## Protocol references
 

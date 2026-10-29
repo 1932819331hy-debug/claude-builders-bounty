@@ -306,6 +306,48 @@ class HookProcessTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_reinstall_restores_failure_policy_without_duplicating_hooks(self) -> None:
+        for prior_policy in (None, "ignore"):
+            with self.subTest(prior_policy=prior_policy), tempfile.TemporaryDirectory() as temp:
+                env = {**os.environ, "HOME": temp}
+                first = subprocess.run([sys.executable, str(INSTALLER)], capture_output=True,
+                                       env=env, check=False, timeout=5)
+                self.assertEqual(first.returncode, 0, first.stderr.decode())
+                settings = Path(temp) / ".claude" / "settings.json"
+                parsed = json.loads(settings.read_text(encoding="utf-8"))
+                handler = parsed["hooks"]["PreToolUse"][0]["hooks"][0]
+                handler.pop("onFailure")
+                if prior_policy is not None:
+                    handler["onFailure"] = prior_policy
+                handler["timeout"] = 17
+                unrelated = {"matcher": "Read", "hooks": [{"type": "command", "command": "true"}]}
+                parsed["hooks"]["PreToolUse"].append(unrelated)
+                settings.write_text(json.dumps(parsed), encoding="utf-8")
+                second = subprocess.run([sys.executable, str(INSTALLER)], capture_output=True,
+                                        env=env, check=False, timeout=5)
+                self.assertEqual(second.returncode, 0, second.stderr.decode())
+                groups = json.loads(settings.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+                self.assertEqual(len(groups), 2)
+                self.assertEqual(groups[1], unrelated)
+                self.assertEqual(groups[0]["hooks"][0]["timeout"], 17)
+                self.assertEqual(groups[0]["hooks"][0].get("onFailure"), "block")
+
+    def test_fifo_hook_path_is_rejected_promptly_without_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            hooks = Path(temp) / ".claude" / "hooks"
+            hooks.mkdir(parents=True)
+            target = hooks / "command_guard.py"
+            os.mkfifo(target)
+            try:
+                result = subprocess.run([sys.executable, str(INSTALLER)], capture_output=True,
+                                        env={**os.environ, "HOME": temp}, check=False, timeout=3)
+            except subprocess.TimeoutExpired:
+                self.fail("installer blocked while opening a FIFO hook path")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"unsafe hook path", result.stderr)
+            self.assertTrue(stat.S_ISFIFO(target.lstat().st_mode))
+            self.assertFalse((hooks.parent / "settings.json").exists())
+
     def test_installer_preserves_settings_and_is_idempotent_in_fake_home(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp)
